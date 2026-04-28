@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Experiencia AR</title>
+
+  <!-- A-Frame y AR.js se cargan siempre pero la escena permanece oculta
+       hasta que el usuario pulse "Iniciar experiencia" -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    /* ── Variables globales ──────────────────────────────── */
+    :root {
+      --blanco:   #ffffff;
+      --negro:    #080c12;
+      --acento:   #00e5c3;
+      --acento2:  #005aff;
+      --texto:    #c8d4e8;
+      --borde:    rgba(255,255,255,0.10);
+      --radio:    16px;
+      --dur:      0.55s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--negro);
+      color: var(--texto);
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       PANTALLA DE INICIO
+    ══════════════════════════════════════════════════════ */
+    #pantalla-inicio {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: var(--negro);
+      transition: opacity var(--dur) ease, transform var(--dur) ease;
+    }
+
+    /* Estado oculto — se activa al pulsar el botón */
+    #pantalla-inicio.oculto {
+      opacity: 0;
+      transform: scale(1.04);
+      pointer-events: none;
+    }
+
+    /* ── Anillo decorativo animado ──────────────────────── */
+    .anillo-wrap {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin-bottom: 2.5rem;
+    }
+
+    .anillo {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1.5px solid transparent;
+      animation: girar 6s linear infinite;
+    }
+
+    .anillo-1 {
+      border-top-color:  var(--acento);
+      border-right-color: var(--acento);
+      animation-duration: 4s;
+    }
+    .anillo-2 {
+      inset: 14px;
+      border-bottom-color: var(--acento2);
+      border-left-color:   var(--acento2);
+      animation-direction: reverse;
+      animation-duration: 7s;
+    }
+    .anillo-3 {
+      inset: 28px;
+      border-top-color:   rgba(0,229,195,0.35);
+      border-right-color: rgba(0,229,195,0.35);
+      animation-duration: 10s;
+    }
+
+    @keyframes girar {
+      to { transform: rotate(360deg); }
+    }
+
+    /* ── Icono central ──────────────────────────────────── */
+    .icono-central {
+      position: absolute;
+      inset: 42px;
+      border-radius: 50%;
+      background: rgba(0,229,195,0.07);
+      border: 1px solid rgba(0,229,195,0.18);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icono-central svg {
+      width: 44px;
+      height: 44px;
+      opacity: 0.85;
+    }
+
+    /* ── Textos ─────────────────────────────────────────── */
+    .etiqueta-sup {
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--acento);
+      margin-bottom: 0.6rem;
+      opacity: 0.8;
+    }
+
+    h1 {
+      font-size: clamp(1.7rem, 6vw, 2.4rem);
+      font-weight: 300;
+      color: var(--blanco);
+      text-align: center;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      letter-spacing: -0.01em;
+    }
+
+    h1 span {
+      font-weight: 600;
+      background: linear-gradient(90deg, var(--acento), var(--acento2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .descripcion {
+      font-size: 0.95rem;
+      color: var(--texto);
+      text-align: center;
+      max-width: 310px;
+      line-height: 1.65;
+      margin-bottom: 2.5rem;
+      opacity: 0.7;
+    }
+
+    /* ── Botón principal ────────────────────────────────── */
+    #btn-iniciar {
+      position: relative;
+      padding: 1rem 2.4rem;
+      border-radius: 50px;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: var(--negro);
+      background: linear-gradient(135deg, var(--acento) 0%, var(--acento2) 100%);
+      box-shadow: 0 0 0 0 rgba(0,229,195,0.4);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      overflow: hidden;
+    }
+
+    /* Brillo de barrido al hacer hover */
+    #btn-iniciar::after {
+      content: '';
+      position: absolute;
+      top: 0; left: -60%;
+      width: 40%; height: 100%;
+      background: rgba(255,255,255,0.25);
+      transform: skewX(-20deg);
+      transition: left 0.5s ease;
+    }
+
+    #btn-iniciar:hover::after { left: 120%; }
+
+    #btn-iniciar:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,229,195,0.35);
+    }
+
+    #btn-iniciar:active { transform: scale(0.97); }
+
+    /* Estado de carga dentro del botón */
+    #btn-iniciar.cargando {
+      pointer-events: none;
+      opacity: 0.75;
+    }
+
+    /* ── Nota de permisos ───────────────────────────────── */
+    .nota {
+      margin-top: 1.4rem;
+      font-size: 0.78rem;
+      color: var(--texto);
+      opacity: 0.45;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ── Puntos decorativos de fondo ────────────────────── */
+    .puntos {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .punto {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.06;
+      background: var(--acento);
+      animation: pulsar 8s ease-in-out infinite;
+    }
+
+    .punto:nth-child(1) { width:320px; height:320px; top:-80px;  left:-80px;  animation-delay: 0s;   }
+    .punto:nth-child(2) { width:200px; height:200px; bottom:-50px; right:-60px; animation-delay: 2s;   background: var(--acento2); }
+    .punto:nth-child(3) { width:120px; height:120px; top:40%;   right:8%;   animation-delay: 4s;   }
+
+    @keyframes pulsar {
+      0%, 100% { transform: scale(1);   opacity: 0.06; }
+      50%       { transform: scale(1.15); opacity: 0.10; }
+    }
+
+    /* ══════════════════════════════════════════════════════
+       ESCENA AR
+    ══════════════════════════════════════════════════════ */
+    #contenedor-ar {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      display: none; /* Se muestra solo tras pulsar el botón */
+    }
+
+    /* A-Frame inyecta un <canvas> que debe cubrir todo */
+    #contenedor-ar a-scene,
+    #contenedor-ar canvas {
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /* ── HUD sobre la cámara ────────────────────────────── */
+    #hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.2rem;
+    }
+
+    /* Barra superior */
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hud-badge {
+      background: rgba(8,12,18,0.65);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--borde);
+      border-radius: 50px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--acento);
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .punto-vivo {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--acento);
+      animation: parpadear 1.5s ease-in-out infinite;
+    }
+
+    @keyframes parpadear {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    /* Botón de cierre */
+    #btn-cerrar {
+      pointer-events: all;
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      border: 1px solid var(--borde);
+      background: rgba(8,12,18,0.65);
+      backdrop-filter: blur(10px);
+      color: var(--blanco);
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    #btn-cerrar:hover { background: rgba(255,255,255,0.12); }
+
+    /* Instrucción inferior */
+    .hud-bottom {
+      display: flex;
+      justify-content: center;
+    }
+
+    .hud-instruccion {
+      background: rgba(8,12,18,0.65);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--borde);
+      border-radius: 50px;
+      padding: 10px 20px;
+      font-size: 13px;
+      color: var(--blanco);
+      opacity: 0.85;
+    }
+
+    /* ── Panel de calibración ───────────────────────────── */
+    #calibrador {
+      position: fixed;
+      bottom: 80px;
+      right: 14px;
+      z-index: 51;
+      background: rgba(8,12,18,0.72);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--borde);
+      border-radius: var(--radio);
+      padding: 12px 16px;
+      color: var(--blanco);
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 180px;
+    }
+
+    #calibrador label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--texto);
+    }
+
+    #calibrador input[type="range"] {
+      width: 100%;
+      accent-color: var(--acento);
+    }
+
+    #btn-ocultar-cal {
+      font-size: 11px;
+      background: rgba(255,255,255,0.08);
+      border: none;
+      color: var(--texto);
+      border-radius: 8px;
+      padding: 4px;
+      cursor: pointer;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ════════════════════════════════════════════════════
+       PUNTOS DECORATIVOS DE FONDO
+  ════════════════════════════════════════════════════ -->
+  <div class="puntos" aria-hidden="true">
+    <div class="punto"></div>
+    <div class="punto"></div>
+    <div class="punto"></div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       PANTALLA DE INICIO
+  ════════════════════════════════════════════════════ -->
+  <div id="pantalla-inicio">
+
+    <!-- Anillo animado con icono de cámara -->
+    <div class="anillo-wrap" aria-hidden="true">
+      <div class="anillo anillo-1"></div>
+      <div class="anillo anillo-2"></div>
+      <div class="anillo anillo-3"></div>
+      <div class="icono-central">
+        <!-- Icono de cámara en SVG -->
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="13" width="40" height="28" rx="5" stroke="#00e5c3" stroke-width="2.2"/>
+          <circle cx="24" cy="27" r="8" stroke="#00e5c3" stroke-width="2.2"/>
+          <circle cx="24" cy="27" r="3.5" fill="#00e5c3" opacity="0.5"/>
+          <path d="M16 13l3-5h10l3 5" stroke="#00e5c3" stroke-width="2.2" stroke-linejoin="round"/>
+          <circle cx="37" cy="20" r="2" fill="#00e5c3" opacity="0.6"/>
+        </svg>
+      </div>
+    </div>
+
+    <p class="etiqueta-sup">Realidad aumentada</p>
+
+    <h1>Descubre el<br><span>mundo en 3D</span></h1>
+
+    <p class="descripcion">
+      Apunta tu cámara al marcador Hiro y observa cómo el modelo cobra vida frente a tus ojos.
+    </p>
+
+    <button id="btn-iniciar" onclick="iniciarAR()">
+      Iniciar experiencia
+    </button>
+
+    <p class="nota">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      Se solicitará acceso a la cámara
+    </p>
+
+  </div>
+
+  <!-- ════════════════════════════════════════════════════
+       ESCENA AR (oculta hasta que el usuario la activa)
+  ════════════════════════════════════════════════════ -->
+  <div id="contenedor-ar">
+
+    <a-scene
+      embedded
+      arjs="sourceType: webcam;
+            debugUIEnabled: false;
+            detectionMode: mono_and_matrix;"
+    >
+      <!-- Modelo GLB precargado -->
+      <a-assets>
+        <a-asset-item id="modelo-3d" src="modelo.glb"></a-asset-item>
+      </a-assets>
+
+      <!--
+        Marcador Hiro.
+        size="0.08" = el marcador impreso mide 8 cm.
+        Ajusta este valor según el tamaño real de tu impresión.
+      -->
+      <a-marker preset="hiro" size="0.08">
+        <a-entity
+          id="mi-modelo"
+          gltf-model="#modelo-3d"
+          position="0 0.05 0"
+          scale="0.1 0.1 0.1"
+          animation="
+            property: rotation;
+            from:     0 0   0;
+            to:       0 360 0;
+            dur:      3000;
+            easing:   linear;
+            loop:     true;
+          "
+        ></a-entity>
+      </a-marker>
+
+      <a-entity camera></a-entity>
+    </a-scene>
+
+    <!-- HUD superpuesto sobre la cámara -->
+    <div id="hud">
+      <div class="hud-top">
+        <div class="hud-badge">
+          <span class="punto-vivo"></span>
+          AR activo
+        </div>
+        <!-- Botón para volver a la pantalla de inicio -->
+        <button id="btn-cerrar" onclick="cerrarAR()" title="Volver">✕</button>
+      </div>
+      <div class="hud-bottom">
+        <div class="hud-instruccion">Apunta al marcador Hiro</div>
+      </div>
+    </div>
+
+    <!-- Panel de calibración de escala -->
+    <div id="calibrador">
+      <label>
+        Scale: <strong id="val-scale">0.10</strong>
+      </label>
+      <input
+        type="range"
+        min="0.01" max="1.00" step="0.01" value="0.10"
+        oninput="ajustarScale(this.value)"
+      />
+      <button id="btn-ocultar-cal" onclick="this.parentElement.style.display='none'">
+        Ocultar panel
+      </button>
+    </div>
+
+  </div>
+
+  <script>
+    /* ── Inicia la experiencia AR ───────────────────────── */
+    function iniciarAR() {
+      const btn = document.getElementById('btn-iniciar');
+      btn.textContent = 'Abriendo cámara…';
+      btn.classList.add('cargando');
+
+      /* Pequeño delay para que el texto "cargando" sea visible
+         mientras el navegador solicita permisos de cámara */
+      setTimeout(() => {
+        document.getElementById('pantalla-inicio').classList.add('oculto');
+        document.getElementById('contenedor-ar').style.display = 'block';
+      }, 400);
+    }
+
+    /* ── Vuelve a la pantalla de inicio ─────────────────── */
+    function cerrarAR() {
+      document.getElementById('contenedor-ar').style.display = 'none';
+      const inicio = document.getElementById('pantalla-inicio');
+      inicio.classList.remove('oculto');
+      const btn = document.getElementById('btn-iniciar');
+      btn.textContent = 'Iniciar experiencia';
+      btn.classList.remove('cargando');
+    }
+
+    /* ── Calibración de scale en tiempo real ─────────────── */
+    function ajustarScale(valor) {
+      document.getElementById('val-scale').textContent =
+        parseFloat(valor).toFixed(2);
+      const modelo = document.getElementById('mi-modelo');
+      if (modelo) {
+        modelo.setAttribute('scale', valor + ' ' + valor + ' ' + valor);
+      }
+    }
+  </script>
+
+</body>
+</html>
